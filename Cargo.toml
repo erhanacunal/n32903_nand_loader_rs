@@ -1,0 +1,20 @@
+[package]
+name = "n32903_nand_loader"
+version = "0.1.0"
+edition = "2021"
+description = "N32903 NAND Boot Loader ported from C to Rust"
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+opt-level = "s"
+debug = true
+lto = true
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+debug = false
+lto = true
+codegen-units = 1
