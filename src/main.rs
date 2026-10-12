@@ -203,7 +203,7 @@ pub unsafe extern "C" fn nand_loader_main() -> i32 {
     // -- hardware init --------------------------------------------------------
     reg_write32(0xFF00_0000, 0);          // clear SRAM boot header
     depop::spu_dac_on(2);                 // audio pop suppression
-    clock::init_clock();                  // DDR init + PLL 96 MHz
+    clock::init_clock();                  // DDR init + PLL 200 MHz
     // RTC power-key setup.  AER only opens when the RTC is initialised and
     // its 32 kHz clock runs; if it doesn't, skip this instead of hanging.
     reg_write32(AER, 0x0000_A965);       // unlock RTC

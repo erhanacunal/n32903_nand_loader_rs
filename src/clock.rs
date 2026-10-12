@@ -466,10 +466,14 @@ pub unsafe fn init_clock() {
         reg_write32(REG_SDREF, 0x80C0);
     }
 
-    // Using __UPLL_96__ configuration (default for NandLoader)
     // DDR grade-6
     reg_write32(REG_SDTIME, 0x094E_7425);
     reg_write32(REG_SDMR, 0x22); // CAS Latency = 2
 
-    sys_set_system_clock(SysClkSrc::UPll, 96_000, 96_000, 96_000, 96_000 / 2, 96_000 / 4);
+    // UPLL 200 MHz (12 MHz XIN: NR = 3, NF = 50, NO = 1; VCO 200 MHz).
+    // CPU = SYS = 200 MHz, HCLK = SYS / 2 = 100 MHz (DDR/AHB — above 96 MHz
+    // the switch runs DDR with its DLL on), APB = 50 MHz. UART and timers
+    // run from XIN, so their rates do not change. NAND timing (SMTCR) is the
+    // BSP's 192 MHz setting.
+    sys_set_system_clock(SysClkSrc::UPll, 200_000, 200_000, 200_000, 200_000 / 2, 200_000 / 4);
 }
