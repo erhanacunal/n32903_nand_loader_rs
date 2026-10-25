@@ -20,8 +20,14 @@ serial port.
 - `writeapp` / `writeldr` update over UART. The whole image is received and
   CRC-checked in SDRAM before any block is erased, and every page is read back
   after programming.
+- Update progress on the 800x480 LCD: a download bar (UART transfer) and a
+  flash bar (NAND programming), then "Update complete" or "Update FAILED".
+  The LCD stays off during a normal boot and is switched off again before
+  the application starts.
 - If the application can't be loaded, the loader opens the menu instead of
   halting.
+- Register map, LCD and backlight come from the
+  [`n32903_rs`](https://github.com/erhanacunal/n32903_rs) HAL.
 
 ## NAND layout
 
@@ -30,11 +36,14 @@ serial port.
 | 0-3    | Loader with its 32-byte IBR boot header (four copies, with the IBR spare marks) |
 | 4+     | Application: `size` (u32 LE) followed by the raw binary           |
 
-The application is loaded to `0x0` and must fit below the loader at
-`0x700000`.
+The application is loaded to `0x0` and must fit below the LCD frame buffer,
+which takes the 750 KB right below the loader (`0x644000`-`0x6FF800`). That
+leaves about 6.2 MB for the image.
 
 ## Requirements
 
+- [`n32903_rs`](https://github.com/erhanacunal/n32903_rs) checked out next to
+  this repository (`../n32903_rs`, a path dependency)
 - Rust nightly with `rust-src` (selected by `rust-toolchain.toml`; the build
   uses `build-std` and a custom target, `arm926ej-s.json`)
 - ARM GNU toolchain (`arm-none-eabi-gcc`, `-ld`, `-objcopy`). `build.rs`
@@ -113,7 +122,9 @@ openocd -f <interface/target cfg> -f jtag_run_loader.tcl \
 
 `load_loader` does the same but leaves the CPU halted at `0x700000`, so
 breakpoints can be set before `resume`. Once the loader is running from RAM,
-flash it with `flash_tool.py ... writeldr nandloader.bin`.
+flash it with `flash_tool.py ... writeldr nandloader.bin`. The update screen
+turns the backlight on, and its pin (GPD0/GPD1) is also a JTAG pin, so the
+debugger loses the target at that point.
 
 ## Source layout
 
@@ -127,9 +138,9 @@ flash it with `flash_tool.py ... writeldr nandloader.bin`.
 | `src/timer.rs` | TIMER0 millisecond timebase for countdowns and timeouts |
 | `src/menu.rs` | Autoboot countdown and command line |
 | `src/update.rs` | `writeapp` / `writeldr` receive, program and verify |
+| `src/display.rs` | Update progress screen on the LCD, 5x7 font |
 | `src/crc32.rs` | CRC-32 for the update protocol |
 | `src/depop.rs` | SPU DAC init to suppress the power-on pop |
-| `src/registers.rs` | Register addresses |
 | `linker.ld` | Memory map, everything linked at `0x700000` |
 | `boot.md` | Detailed walkthrough of the original loader's design |
 

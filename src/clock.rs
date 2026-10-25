@@ -1,7 +1,7 @@
 //! Clock/PLL/SDRAM configuration for N32903
 //! Ported from wb_config.c
 
-use crate::registers::*;
+use n32903_rs::registers::*;
 
 /// Clock source enumeration
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! SPU/DAC depop initialization
 //! Ported from Depop.c
 
-use crate::registers::*;
+use n32903_rs::registers::*;
 
 /// Simple delay (~10us per iteration at 96MHz)
 unsafe fn sys_delay(count: u32) {
@@ -21,9 +21,9 @@ pub unsafe fn spu_dac_on(level: u8) {
     );
 
     // Reset SPU
-    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) & !SPURST);
-    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) | SPURST);
-    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) & !SPURST);
+    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) & !SPU_SWRST);
+    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) | SPU_SWRST);
+    reg_write32(REG_SPU_CTRL, reg_read32(REG_SPU_CTRL) & !SPU_SWRST);
 
     // Configure DAC parameters
     reg_write32(REG_SPU_DAC_PAR, reg_read32(REG_SPU_DAC_PAR) | 0x30); // disable

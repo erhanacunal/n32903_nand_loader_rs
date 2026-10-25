@@ -36,13 +36,13 @@ macro_rules! spin {
     }};
 }
 
-mod registers;
 mod uart;
 mod clock;
 mod depop;
 mod nand_drv;
 mod timer;
 mod crc32;
+mod display;
 mod update;
 mod menu;
 
@@ -72,7 +72,7 @@ static mut HEADER_PAGE: [u8; 4096] = [0u8; 4096];
 
 /// Load the firmware and jump to it.  Returns only if it cannot be loaded.
 unsafe fn load_and_jump(start_block: u32, execute_addr: u32) {
-    use crate::registers::*;
+    use n32903_rs::registers::*;
 
     let sm0 = nand_drv::get_sm0();
 
@@ -163,6 +163,7 @@ unsafe fn load_and_jump(start_block: u32, execute_addr: u32) {
     reg_write32(REG_GPEFUN, reg_read32(REG_GPEFUN) & !0x00FF_0000);
     reg_write32(REG_GPEFUN, reg_read32(REG_GPEFUN) & !0x0000_FFF0);
 
+    display::shutdown();
     timer::deinit();
     uart::uart_puts("Jumping to firmware...\n");
     uart::flush();
@@ -198,7 +199,7 @@ unsafe fn copy_to_phys(dst: u32, src: *const u8, len: usize) {
 
 #[no_mangle]
 pub unsafe extern "C" fn nand_loader_main() -> i32 {
-    use crate::registers::*;
+    use n32903_rs::registers::*;
 
     // -- hardware init --------------------------------------------------------
     reg_write32(0xFF00_0000, 0);          // clear SRAM boot header
@@ -276,13 +277,4 @@ pub unsafe extern "C" fn nand_loader_main() -> i32 {
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
-}
-
-// ============================================================================
-// Toolchain stubs
-// ============================================================================
-
-#[no_mangle]
-pub extern "C" fn _sbrk(_incr: isize) -> *mut u8 {
-    core::ptr::null_mut()
 }

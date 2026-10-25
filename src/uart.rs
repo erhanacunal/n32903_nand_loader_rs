@@ -1,7 +1,7 @@
 //! UART driver for N32903 debug output
 //! Ported from wb_uart.c
 
-use crate::registers::*;
+use n32903_rs::registers::*;
 use crate::timer;
 
 /// UART baud rate parameters
@@ -19,15 +19,11 @@ const TX_ENABLE_LEVEL_HIGH: bool = true;
 /// UART initialization status
 static mut UART_INITIALIZED: bool = false;
 
-/// UART port offset (0 for UART0, 0x100 for UART1)
-static mut UART_PORT: u32 = 0x100;
-
-/// Initialize UART hardware (UART1 by default at 115200 baud)
+/// Initialize UART1 (the REG_UART_* aliases) at 115200 baud
 pub unsafe fn uart_init() {
     if UART_INITIALIZED {
         return;
     }
-    UART_PORT = 0x100; // Use UART1
 
     // Enable UART multi-function pins (GPA10, GPA11 for normal UART)
     reg_write32(REG_GPAFUN, reg_read32(REG_GPAFUN) | 0x00F0_0000);
@@ -43,24 +39,24 @@ pub unsafe fn uart_init() {
     reg_write32(REG_GPIOA_OMD, reg_read32(REG_GPIOA_OMD) | TX_ENABLE_PIN);
 
     // Reset TX/RX FIFOs
-    reg_write32(REG_UART_FCR + UART_PORT, 0x07);
+    reg_write32(REG_UART_FCR, 0x07);
 
     // Setup baud rate (mode 3)
     let ref_clk = EXTERNAL_CRYSTAL_CLOCK;
     let baud_val = ref_clk / 115_200 - 2;
-    reg_write32(REG_UART_BAUD + UART_PORT, (0x30 << 24) | baud_val);
+    reg_write32(REG_UART_BAUD, (0x30 << 24) | baud_val);
 
     // Setup parity, data bits, stop bits
     reg_write32(
-        REG_UART_LCR + UART_PORT,
+        REG_UART_LCR,
         WB_PARITY_NONE | WB_DATA_BITS_8 | WB_STOP_BITS_1,
     );
 
     // Timeout register
-    reg_write32(REG_UART_TOR + UART_PORT, 0x80 + 0x20);
+    reg_write32(REG_UART_TOR, 0x80 + 0x20);
 
     // Setup FIFO trigger level and enable FIFO
-    reg_write32(REG_UART_FCR + UART_PORT, LEVEL_1_BYTE | 0x01);
+    reg_write32(REG_UART_FCR, LEVEL_1_BYTE | 0x01);
 
     UART_INITIALIZED = true;
 }
@@ -68,15 +64,15 @@ pub unsafe fn uart_init() {
 /// Send one byte exactly as given (no newline translation).
 pub unsafe fn put_raw(c: u8) {
     // Wait until TX buffer is empty
-    while reg_read32(REG_UART_FSR + UART_PORT) & TX_EMPTY == 0 {}
-    reg_write8(REG_UART_THR + UART_PORT, c);
+    while reg_read32(REG_UART_FSR) & TX_EMPTY == 0 {}
+    reg_write8(REG_UART_THR, c);
 }
 
 /// Wait until the last byte has left the shift register (FSR TE_FLAG).
 /// Call before handing the UART to other code, which resets the FIFOs
 /// and would cut a byte in half.
 pub unsafe fn flush() {
-    while reg_read32(REG_UART_FSR + UART_PORT) & TE_FLAG == 0 {}
+    while reg_read32(REG_UART_FSR) & TE_FLAG == 0 {}
 }
 
 /// Output a single character via UART (polling mode)
@@ -89,14 +85,14 @@ pub unsafe fn putchar(c: u8) {
 
 /// Return a received byte if one is waiting.
 pub unsafe fn try_getc() -> Option<u8> {
-    let fsr = reg_read32(REG_UART_FSR + UART_PORT);
+    let fsr = reg_read32(REG_UART_FSR);
     if fsr & RX_OVER_IF != 0 {
-        reg_write32(REG_UART_FSR + UART_PORT, RX_OVER_IF);
+        reg_write32(REG_UART_FSR, RX_OVER_IF);
     }
     if fsr & RX_EMPTY != 0 {
         None
     } else {
-        Some(reg_read8(REG_UART_RBR + UART_PORT))
+        Some(reg_read8(REG_UART_RBR))
     }
 }
 

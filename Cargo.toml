@@ -5,6 +5,9 @@ edition = "2021"
 description = "N32903 NAND Boot Loader ported from C to Rust"
 
 [dependencies]
+# HAL: registers, LCD and backlight.  Default features off to drop its UART
+# panic handler (the loader has its own).
+n32903_rs = { path = "../n32903_rs", default-features = false }
 
 [profile.dev]
 panic = "abort"

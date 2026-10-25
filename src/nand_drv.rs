@@ -1,7 +1,7 @@
 //! NAND Flash driver for N32903 (FMI/SM interface)
 //! Ported from NandDrv.c + turbowriter.h
 
-use crate::registers::*;
+use n32903_rs::registers::*;
 use crate::sysprintf;
 
 // ============================================================================

@@ -9,7 +9,7 @@
 //! fall back to counting polls, which is only roughly calibrated.
 
 use crate::clock;
-use crate::registers::*;
+use n32903_rs::registers::*;
 
 /// Polls of `millis()` treated as one millisecond in fallback mode.
 const FALLBACK_POLLS_PER_MS: u32 = 4000;
@@ -26,7 +26,7 @@ pub unsafe fn init() -> bool {
 
     reg_write32(REG_APBCLK, reg_read32(REG_APBCLK) | TMR0_CKE);
     reg_write32(REG_TCSR0, 0);
-    reg_write32(REG_TISR, TISR_TIF0);
+    reg_write32(REG_TISR, TIF0);
 
     let ticks_per_ms = clock::sys_get_external_clock(); // kHz == ticks per ms
     reg_write32(REG_TICR0, ticks_per_ms);
@@ -34,8 +34,8 @@ pub unsafe fn init() -> bool {
 
     // One period is 1 ms; give it far longer than that before giving up.
     for _ in 0..2_000_000u32 {
-        if reg_read32(REG_TISR) & TISR_TIF0 != 0 {
-            reg_write32(REG_TISR, TISR_TIF0);
+        if reg_read32(REG_TISR) & TIF0 != 0 {
+            reg_write32(REG_TISR, TIF0);
             return true;
         }
     }
@@ -46,7 +46,7 @@ pub unsafe fn init() -> bool {
 /// Stop TIMER0 so the application starts with it idle.
 pub unsafe fn deinit() {
     reg_write32(REG_TCSR0, 0);
-    reg_write32(REG_TISR, TISR_TIF0);
+    reg_write32(REG_TISR, TIF0);
 }
 
 /// Milliseconds since `init()`.
@@ -57,8 +57,8 @@ pub unsafe fn millis() -> u32 {
             FALLBACK_POLLS = 0;
             MS = MS.wrapping_add(1);
         }
-    } else if reg_read32(REG_TISR) & TISR_TIF0 != 0 {
-        reg_write32(REG_TISR, TISR_TIF0);
+    } else if reg_read32(REG_TISR) & TIF0 != 0 {
+        reg_write32(REG_TISR, TIF0);
         MS = MS.wrapping_add(1);
     }
     MS

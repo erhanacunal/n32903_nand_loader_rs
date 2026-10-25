@@ -19,6 +19,7 @@
 //! block is erased, so an interrupted transfer never touches the flash.
 
 use crate::crc32::Crc32;
+use crate::display::{self, Bar};
 use crate::nand_drv;
 use crate::uart::{self, UartArg};
 use crate::FW_START_BLOCK;
@@ -41,8 +42,9 @@ const BOOT_CODE_MARKER: u32 = 0x5742_5AA5;
 const BOOT_HEADER_LEN: u32 = 32;
 const LOADER_BLOCKS: u32 = 4;
 
-/// Images are staged in SDRAM below the loader (which lives at
-/// __image_start).  Kept off address 0 so it is never a null pointer.
+/// Images are staged in SDRAM below the LCD frame buffer, which sits below
+/// the loader (at __image_start).  Kept off address 0 so it is never a null
+/// pointer.
 const UPLOAD_BUF: u32 = 0x0000_1000;
 const MAX_PAGE: u32 = 4096;
 
@@ -56,13 +58,19 @@ extern "C" {
     static __image_start: u8;
 }
 
-fn loader_base() -> u32 {
+pub fn loader_base() -> u32 {
     core::ptr::addr_of!(__image_start) as u32
 }
 
 /// Largest application image accepted by `writeapp` (and by the boot path).
 pub fn max_app_size() -> u32 {
-    loader_base() - UPLOAD_BUF - 2 * MAX_PAGE
+    display::frame_buffer_addr() - UPLOAD_BUF - 2 * MAX_PAGE
+}
+
+/// NAND pages programmed so far, for the progress bar.
+struct FlashProgress {
+    done: u32,
+    total: u32,
 }
 
 // ============================================================================
@@ -70,21 +78,26 @@ pub fn max_app_size() -> u32 {
 // ============================================================================
 
 pub unsafe fn cmd_writeapp() {
+    display::begin("Firmware update");
     let Some(size) = receive("application", UPLOAD_BUF + 4, max_app_size()) else {
+        display::finish(false);
         return;
     };
     finish(write_app(size));
 }
 
 pub unsafe fn cmd_writeldr() {
+    display::begin("Loader update");
     let sm = nand_drv::get_sm0();
     let Some(size) = receive("loader", UPLOAD_BUF, sm.page_size * sm.page_per_block) else {
+        display::finish(false);
         return;
     };
     finish(write_loader(size));
 }
 
 unsafe fn finish(ok: bool) {
+    display::finish(ok);
     if ok {
         uart::uart_puts("Update complete.\n");
         uart::put_raw(ACK);
@@ -146,6 +159,9 @@ unsafe fn receive(what: &str, dst: u32, max: u32) -> Option<u32> {
     while next < size {
         if receive_chunk(dst, size, &mut next) {
             retries = 0;
+            // Before the ACK: the host sends nothing until it gets it.
+            display::progress(Bar::Download, next, size);
+            display::status_kb("Received ", next, size);
             uart::put_raw(ACK);
         } else {
             retries += 1;
@@ -167,6 +183,7 @@ unsafe fn receive(what: &str, dst: u32, max: u32) -> Option<u32> {
     }
 
     uart::uart_printf("Received %d bytes, CRC OK.\n", &[UartArg::U32(size)]);
+    display::status("Writing flash...");
     Some(size)
 }
 
@@ -234,6 +251,7 @@ unsafe fn write_app(size: u32) -> bool {
     let sm = nand_drv::get_sm0();
     core::ptr::copy_nonoverlapping(size.to_le_bytes().as_ptr(), UPLOAD_BUF as *mut u8, 4);
     let pages = pad_to_pages(4 + size);
+    let mut progress = FlashProgress { done: 0, total: pages };
 
     let mut block = FW_START_BLOCK;
     let mut done: u32 = 0;
@@ -249,9 +267,10 @@ unsafe fn write_app(size: u32) -> bool {
         }
 
         let n = (pages - done).min(sm.page_per_block);
-        if program_block(block, UPLOAD_BUF + done * sm.page_size, n, false) {
+        if program_block(block, UPLOAD_BUF + done * sm.page_size, n, false, &mut progress) {
             done += n;
         } else {
+            progress.done = done;
             uart::uart_printf("Block %d: marking bad, retrying on next block\n", &[UartArg::U32(block)]);
             nand_drv::sic_sm_mark_bad_block(0, block as i32);
         }
@@ -280,13 +299,15 @@ unsafe fn write_loader(size: u32) -> bool {
     uart::uart_printf("Loader ExeAddr=0x%x\n", &[UartArg::U32(buf.add(1).read())]);
 
     let pages = pad_to_pages(size);
+    let mut progress = FlashProgress { done: 0, total: pages * LOADER_BLOCKS };
     let mut written = 0;
     for block in 0..LOADER_BLOCKS {
         if block != 0 && nand_drv::check_bad_block_mark(block) != nand_drv::SUCCESSFUL {
             uart::uart_printf("Block %d: bad, skipped\n", &[UartArg::U32(block)]);
+            progress.done += pages;
             continue;
         }
-        if !program_block(block, UPLOAD_BUF, pages, true) {
+        if !program_block(block, UPLOAD_BUF, pages, true, &mut progress) {
             return false;
         }
         written += 1;
@@ -296,7 +317,13 @@ unsafe fn write_loader(size: u32) -> bool {
 
 /// Erase `block`, program `pages` pages from `src`, read back and compare.
 /// `boot` writes the IBR page sequence marks used in blocks 0-3.
-unsafe fn program_block(block: u32, src: u32, pages: u32, boot: bool) -> bool {
+unsafe fn program_block(
+    block: u32,
+    src: u32,
+    pages: u32,
+    boot: bool,
+    progress: &mut FlashProgress,
+) -> bool {
     let sm = nand_drv::get_sm0();
     let page_size = sm.page_size;
 
@@ -316,6 +343,8 @@ unsafe fn program_block(block: u32, src: u32, pages: u32, boot: bool) -> bool {
             uart::uart_printf("Block %d page %d: program failed\n", &[UartArg::U32(block), UartArg::U32(p)]);
             return false;
         }
+        progress.done += 1;
+        display::progress(Bar::Flash, progress.done, progress.total);
     }
 
     let verify = &mut (&mut *core::ptr::addr_of_mut!(VERIFY_PAGE)).0[..page_size as usize];

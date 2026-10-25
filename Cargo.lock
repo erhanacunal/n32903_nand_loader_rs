@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "n32903_nand_loader"
 version = "0.1.0"
+dependencies = [
+ "n32903_rs",
+]
+
+[[package]]
+name = "n32903_rs"
+version = "0.1.0"
